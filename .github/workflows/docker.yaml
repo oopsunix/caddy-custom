@@ -69,7 +69,6 @@ jobs:
           tags: |
             type=raw,value=latest
             type=raw,value=${{ needs.prepare.outputs.latest_tag }}
-            type=sha,prefix=,format=short
 
       - name: 🚀 Build and push multi-arch image
         uses: docker/build-push-action@v5
