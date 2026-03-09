@@ -1,0 +1,202 @@
+name: Build Custom Caddy with Plugin List
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 1 * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: caddy-cloudflare-build
+  cancel-in-progress: true
+
+env:
+  TZ: Asia/Shanghai
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      latest_tag: ${{ steps.tag.outputs.latest_tag }}
+      release_exists: ${{ steps.tag.outputs.release_exists }}
+    steps:
+      - name: 📦 Install jq
+        run: sudo apt-get update -y && sudo apt-get install -y jq
+
+      - name: 🏷️ Get latest Caddy tag and check release
+        id: tag
+        run: |
+          latest=$(curl -fsSL "https://api.github.com/repos/caddyserver/caddy/releases/latest" | jq -r '.tag_name')
+          code=$(curl -s -o /dev/null -w "%{{http_code}}" "https://api.github.com/repos/${{ github.repository }}/releases/tags/$latest")
+          echo "latest_tag=$latest" >> "$GITHUB_OUTPUT"
+          echo "release_exists=$(if [ "$code" -eq 200 ]; then echo true; else echo false; fi)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve
+    if: needs.resolve.outputs.release_exists != 'true'
+    runs-on: ubuntu-latest
+    env:
+      GO_VERSION: '1.25.0'
+    steps:
+      - name: 🛒 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐹 Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: 🛠️ Install xcaddy and prepare environment
+        run: |
+          go install github.com/caddyserver/xcaddy/cmd/xcaddy@latest
+          mkdir -p ./artifacts
+
+      - name: 📋 Read plugins list
+        id: read-plugins
+        run: |
+          # 如果 plugins.list 不存在，则使用默认插件（仅 Cloudflare DNS）
+          if [[ ! -f plugins.list ]]; then
+            echo "⚠️ plugins.list 未找到，使用默认插件：cloudflare"
+            echo "cloudflare:github.com/caddy-dns/cloudflare@latest" > plugins.list
+          fi
+
+          # 解析插件列表，生成两个文件：names.txt 和 urls.txt
+          > names.txt
+          > urls.txt
+          while IFS=: read -r name url; do
+            # 忽略空行和注释行（以#开头）
+            if [[ -z "$name" || "$name" =~ ^[[:space:]]*# ]]; then
+              continue
+            fi
+            echo "$name" >> names.txt
+            echo "$url" >> urls.txt
+          done < plugins.list
+
+          echo "📋 将构建以下插件："
+          paste -d':' names.txt urls.txt | sed 's/^/  /'
+
+      - name: 🐧 Build linux/amd64
+        run: |
+          set -e
+          ARCH=amd64
+          latest_tag='${{ needs.resolve.outputs.latest_tag }}'
+          echo "--- 开始为 linux/$ARCH 构建 Caddy v${latest_tag#v} ---"
+
+          # 读取 URL 列表并构建 xcaddy 参数
+          WITH_ARGS=()
+          while IFS= read -r url; do
+            WITH_ARGS+=(--with "$url")
+          done < urls.txt
+
+          # 执行构建
+          GOOS=linux GOARCH=$ARCH xcaddy build "$latest_tag" \
+            "${WITH_ARGS[@]}" \
+            --output ./caddy
+
+          # 验证所有插件是否已编译
+          echo "🔍 验证插件集成情况..."
+          ./caddy list-modules > modules.txt
+
+          while IFS= read -r name; do
+            echo "检查插件：$name"
+            if ! grep -Fq "$name" modules.txt; then
+              echo "❌ 错误：未找到插件 $name 对应的模块！"
+              exit 1
+            fi
+          done < names.txt
+          echo "✅ 所有插件验证成功。"
+
+          # 打包并生成校验和
+          version="${latest_tag#v}"
+          filename="caddy-${version}-linux-${ARCH}.tar.gz"
+          tar -czf "$filename" caddy
+          sha256sum "$filename" | awk '{print $1}' > "${filename}.sha256"
+          mv "$filename" "${filename}.sha256" ./artifacts/
+          rm -f ./caddy modules.txt
+
+      - name: 🐧 Build linux/arm64
+        run: |
+          set -e
+          ARCH=arm64
+          latest_tag='${{ needs.resolve.outputs.latest_tag }}'
+          echo "--- 开始为 linux/$ARCH 构建 Caddy v${latest_tag#v} ---"
+
+          # 读取 URL 列表并构建 xcaddy 参数
+          WITH_ARGS=()
+          while IFS= read -r url; do
+            WITH_ARGS+=(--with "$url")
+          done < urls.txt
+
+          # 执行构建
+          GOOS=linux GOARCH=$ARCH xcaddy build "$latest_tag" \
+            "${WITH_ARGS[@]}" \
+            --output ./caddy
+
+          # 跳过本地验证
+          echo "⚠️ 跳过 linux/$ARCH 的本地验证。"
+
+          # 打包并生成校验和
+          version="${latest_tag#v}"
+          filename="caddy-${version}-linux-${ARCH}.tar.gz"
+          tar -czf "$filename" caddy
+          sha256sum "$filename" | awk '{print $1}' > "${filename}.sha256"
+          mv "$filename" "${filename}.sha256" ./artifacts/
+          rm -f ./caddy
+
+      - name: 📤 Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: caddy-binaries
+          path: ./artifacts/
+
+  release:
+    needs: [resolve, build]
+    if: needs.resolve.outputs.release_exists != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🛒 Checkout repository (for plugins.list)
+        uses: actions/checkout@v4
+
+      - name: 📥 Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: caddy-binaries
+          path: ./release-files
+
+      - name: 📝 Prepare Release content
+        id: prep_body
+        run: |
+          build_time="$(date '+%Y-%m-%d %H:%M:%S CST')"
+
+          # 读取插件列表（如果不存在则使用默认信息）
+          if [[ -f plugins.list ]]; then
+            plugin_list=$(grep -v '^[[:space:]]*#' plugins.list | sed 's/^/- /')
+          else
+            plugin_list="- cloudflare:github.com/caddy-dns/cloudflare@latest (默认)"
+          fi
+
+          {
+            echo "body<<EOF"
+            echo "构建基于 Caddy 官方源码，添加了以下插件："
+            echo ""
+            echo "$plugin_list"
+            echo ""
+            echo "- **Caddy 版本**: ${{ needs.resolve.outputs.latest_tag }}"
+            echo "- **构建架构**: amd64, arm64"
+            echo "- **构建时间**: ${build_time}"
+            echo "- **官方源码**: https://github.com/caddyserver/caddy"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 🚀 Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve.outputs.latest_tag }}
+          name: "Caddy ${{ needs.resolve.outputs.latest_tag }} (custom plugins)"
+          body: ${{ steps.prep_body.outputs.body }}
+          files: ./release-files/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
