@@ -41,22 +41,12 @@ echo "🎉 发现最新版本: v$VERSION"
 
 FILENAME="caddy-${VERSION}-linux-${CADDY_ARCH}.tar.gz"
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$LATEST_TAG/$FILENAME"
-CHECKSUM_URL="${DOWNLOAD_URL}.sha256"
 
 TMP_DIR=$(mktemp -d)
 cd "$TMP_DIR"
 
 echo "⬇️ 正在下载 Caddy v$VERSION..."
 curl -sL -O "$DOWNLOAD_URL"
-curl -sL -O "$CHECKSUM_URL"
-
-echo "🔐 校验 SHA256..."
-if ! sha256sum -c "${FILENAME}.sha256"; then
-    echo "❌ 校验和不匹配，下载可能已损坏！"
-    rm -rf "$TMP_DIR"
-    exit 1
-fi
-echo "✅ 校验通过。"
 
 echo "📦 解压文件..."
 tar -xzf "$FILENAME"

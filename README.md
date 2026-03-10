@@ -11,7 +11,7 @@
 - **多架构支持**：原生编译并提供适用于 `linux/amd64` 和 `linux/arm64` 架构的产物。
 - **插件动态集成**：通过 `plugins.list` 集中管理插件，构建过程自动解析并注入。
 - **全自动分发**：
-  - **GitHub Release**: 提供编译好的 `.tar.gz` 压缩包及对应的 `sha256` 校验文件。
+  - **GitHub Release**: 提供编译好的多架构 `.tar.gz` 压缩包。
   - **Docker Image**: 自动构建多架构镜像并推送到 **Docker Hub** 与 **GitHub Container Registry (GHCR)**。
 
 ## 📦 已集成插件
@@ -30,18 +30,14 @@
 #### 自动一键安装/更新 (推荐)
 如果您已经通过[官方包管理器](https://caddyserver.com/docs/install#debian-ubuntu-raspbian)安装了原版 Caddy，可以使用本项目提供的一键脚本，它会自动下载最新版、停止服务、备份并替换原版二进制文件：
 ```bash
-curl -sL https://raw.githubusercontent.com/oopsunix/caddy-custom/main/update_caddy.sh | sudo bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/oopsunix/caddy-custom/main/update_caddy.sh)"
 ```
 
 #### 手动下载与部署
 您可以从 [Releases](https://github.com/oopsunix/caddy-custom/releases) 页面获取最新的编译产物：
 
 1. **下载**: 选择对应架构的包（如 `caddy-2.x.x-linux-amd64.tar.gz`）。
-2. **校验**:
-   ```bash
-   sha256sum -c caddy-2.x.x-linux-amd64.tar.gz.sha256
-   ```
-3. **解压与替换**:
+2. **解压与替换**:
    ```bash
    tar -zxvf caddy-2.x.x-linux-amd64.tar.gz
    sudo systemctl stop caddy # 如果服务正在运行
@@ -49,7 +45,7 @@ curl -sL https://raw.githubusercontent.com/oopsunix/caddy-custom/main/update_cad
    sudo chmod +x /usr/bin/caddy
    sudo systemctl start caddy
    ```
-4. **验证**:
+3. **验证**:
    ```bash
    caddy version
    caddy list-modules # 查看已集成的插件
@@ -69,7 +65,7 @@ docker pull ghcr.io/oopsunix/caddy:latest
 
 | 工作流 | 触发频率 | 产出物内容 |
 | :--- | :--- | :--- |
-| **Build Binary** | 每月1号 10:00 (CST) | 独立的 amd64/arm64 压缩包 + SHA256 校验和 |
+| **Build Binary** | 每月1号 10:00 (CST) | 独立的 amd64/arm64 压缩包 |
 | **Build Docker** | 每月1号 10:30 (CST) | 多架构 Docker 镜像 (Manifest List) |
 
 ## 📄 开源协议

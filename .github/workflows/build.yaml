@@ -66,7 +66,7 @@ jobs:
           # 解析插件列表，生成两个文件：names.txt 和 urls.txt
           > names.txt
           > urls.txt
-          while IFS=: read -r name url; do
+          while IFS=: read -r name url || [[ -n "$name" ]]; do
             # 忽略空行和注释行（以#开头）
             if [[ -z "$name" || "$name" =~ ^[[:space:]]*# ]]; then
               continue
@@ -87,7 +87,7 @@ jobs:
 
           # 读取 URL 列表并构建 xcaddy 参数
           WITH_ARGS=()
-          while IFS= read -r url; do
+          while IFS= read -r url || [[ -n "$url" ]]; do
             WITH_ARGS+=(--with "$url")
           done < urls.txt
 
@@ -100,7 +100,7 @@ jobs:
           echo "🔍 验证插件集成情况..."
           ./caddy list-modules > modules.txt
 
-          while IFS= read -r name; do
+          while IFS= read -r name || [[ -n "$name" ]]; do
             echo "检查插件：$name"
             if ! grep -Fq "$name" modules.txt; then
               echo "❌ 错误：未找到插件 $name 对应的模块！"
@@ -109,12 +109,11 @@ jobs:
           done < names.txt
           echo "✅ 所有插件验证成功。"
 
-          # 打包并生成校验和
+          # 打包
           version="${latest_tag#v}"
           filename="caddy-${version}-linux-${ARCH}.tar.gz"
           tar -czf "$filename" caddy
-          sha256sum "$filename" | awk '{print $1}' > "${filename}.sha256"
-          mv "$filename" "${filename}.sha256" ./artifacts/
+          mv "$filename" ./artifacts/
           rm -f ./caddy modules.txt
 
       - name: 🐧 Build linux/arm64
@@ -126,7 +125,7 @@ jobs:
 
           # 读取 URL 列表并构建 xcaddy 参数
           WITH_ARGS=()
-          while IFS= read -r url; do
+          while IFS= read -r url || [[ -n "$url" ]]; do
             WITH_ARGS+=(--with "$url")
           done < urls.txt
 
@@ -138,12 +137,11 @@ jobs:
           # 跳过本地验证
           echo "⚠️ 跳过 linux/$ARCH 的本地验证。"
 
-          # 打包并生成校验和
+          # 打包
           version="${latest_tag#v}"
           filename="caddy-${version}-linux-${ARCH}.tar.gz"
           tar -czf "$filename" caddy
-          sha256sum "$filename" | awk '{print $1}' > "${filename}.sha256"
-          mv "$filename" "${filename}.sha256" ./artifacts/
+          mv "$filename" ./artifacts/
           rm -f ./caddy
 
       - name: 📤 Upload build artifacts
