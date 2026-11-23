@@ -9,7 +9,7 @@
 
 <!-- BUILD_STATUS_START -->
 - 最新 Caddy 版本：v2.11.9
-- 最后检查时间：2026-11-24 01:55 CST
+- 最后检查时间：2026-11-24 02:01 CST
 <!-- BUILD_STATUS_END -->
 - 产物下载：[Releases](https://github.com/oopsunix/caddy-custom/releases/latest) · [Docker Hub](https://hub.docker.com/r/oopsunix/caddy)
 
