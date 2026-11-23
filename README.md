@@ -5,6 +5,14 @@
 
 这是一个基于 GitHub Actions 的自动化构建项目，旨在定期追踪 [Caddy Server](https://github.com/caddyserver/caddy) 的官方发布，并自动编译集成常用第三方插件的自定义版本。
 
+## 📊 构建状态
+
+<!-- BUILD_STATUS_START -->
+- 最新 Caddy 版本：v2.11.9
+- 最后检查时间：2026-11-24 01:55 CST
+<!-- BUILD_STATUS_END -->
+- 产物下载：[Releases](https://github.com/oopsunix/caddy-custom/releases/latest) · [Docker Hub](https://hub.docker.com/r/oopsunix/caddy)
+
 ## 🌟 项目特性
 
 - **自动追踪更新**：每月自动检查 Caddy 官方最新 Release 标签，确保始终基于最新稳定版构建。
